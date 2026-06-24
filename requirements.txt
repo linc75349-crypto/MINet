@@ -1,0 +1,11 @@
+# PyTorch ecosystem (install matching your CUDA version)
+torch>=1.4.0
+torchvision>=0.5.0
+
+# Core dependencies
+numpy>=1.18.1
+scikit-image>=0.16.0
+Pillow>=7.0.0
+
+# Optional but recommended
+tqdm>=4.42.0

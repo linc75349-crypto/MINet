@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use MINet in your research, please cite the following paper."
+authors:
+  - family-names: Shen
+    given-names: Kunye
+  - family-names: Zhou
+    given-names: Xiaofei
+  - family-names: Liu
+    given-names: Zhi
+title: "MINet: Multiscale Interactive Network for Real-Time Salient Object Detection of Strip Steel Surface Defects"
+journal: "IEEE Transactions on Industrial Informatics (TII)"
+year: 2024
+url: "https://github.com/Kunye-Shen/MINet"
