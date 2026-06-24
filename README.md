@@ -260,6 +260,7 @@ net.load_state_dict(torch.load('model.pth'), strict=False)
 ## 九、参考
 
 - 原始论文：[MINet: Multiscale Interactive Network ...](https://arxiv.org/abs/2405.16096) (IEEE TII 2024)
-- 原作者：[Kunye Shen](https://scholar.google.com.hk/citations?user=q6_PkywAAAAJ&hl=zh-CN)、[Xiaofei Zhou](https://scholar.google.com.hk/citations?user=2PUAFW8AAAAJ&hl=zh-CN)、[Zhi Liu](https://scholar.google.com.hk/citations?user=Sd5VB2cAAAAJ&hl=zh-CN)
+- 原作者：[Kunye Shen](https://github.com/Kunye-Shen)、[Xiaofei Zhou](https://scholar.google.com.hk/citations?user=2PUAFW8AAAAJ&hl=zh-CN)、[Zhi Liu](https://scholar.google.com.hk/citations?user=Sd5VB2cAAAAJ&hl=zh-CN)
+- 本仓库维护：[linc75349-crypto](https://github.com/linc75349-crypto/MINet)
 
 如有问题，请在 GitHub 上提出 Issue。
