@@ -20,11 +20,7 @@ setup(
         "numpy>=1.18.1",
         "scikit-image>=0.16.0",
         "Pillow>=7.0.0",
-        "tqdm>=4.42.0",
     ],
-    extras_require={
-        "dev": ["flake8"],
-    },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Science/Research",

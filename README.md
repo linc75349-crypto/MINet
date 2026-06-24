@@ -1,252 +1,218 @@
-<div align="center">
+# MINet 说明
 
-# MINet: Multiscale Interactive Network for Real-Time Salient Object Detection of Strip Steel Surface Defects
+![Python](https://img.shields.io/badge/Python-3.7+-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-1.4.0-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-[![Paper](https://img.shields.io/badge/Paper-TII%202024-blue)](https://ieeexplore.ieee.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python 3.7+](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/)
-[![PyTorch 1.4+](https://img.shields.io/badge/PyTorch-1.4+-red.svg)](https://pytorch.org/)
-
-</div>
+MINet：Multiscale Interactive Network for Real-Time Salient Object Detection of Strip Steel Surface Defects（**多尺度交互网络：带钢表面缺陷实时显著性目标检测**）
 
 ---
 
-## 目录
+## 一、项目概述
 
-- [新闻](#新闻)
-- [概述](#概述)
-- [网络架构](#网络架构)
-- [实验结果](#实验结果)
-- [环境配置](#环境配置)
-- [快速开始](#快速开始)
-- [项目结构](#项目结构)
-- [常见问题](#常见问题)
-- [引用](#引用)
-- [许可证](#许可证)
+本项目基于 MINet（Multiscale Interactive Network）架构，实现了**带钢表面缺陷的实时显著性目标检测**。核心创新是 **MI Module（多尺度交互模块）**，通过扩展深度可分离卷积（DSConv），以极低的参数量实现高精度的缺陷检测。
 
----
+### 模型特点
 
-## 新闻
+| 指标 | 数值 |
+|---|---|
+| **参数量** | **0.28M**（极轻量） |
+| **计算量** | 0.30G FLOPs |
+| **GPU 速度** | **721 FPS**（NVIDIA GTX 2080Ti） |
+| **CPU 速度** | 6.3 FPS（i9-9900X） |
+| **输入尺寸** | 368 × 368 |
 
-- [2024] 论文被 **IEEE Transactions on Industrial Informatics (TII)** 接收。
-- [2024] 我们正式开源了代码、训练好的模型权重和预测结果。
+### 项目目录结构
 
----
-
-## 概述
-
-MINet 是一个专为**带钢表面缺陷显著性目标检测**设计的实时轻量网络。
-
-核心创新为 **MI Module（多尺度交互模块）**，通过 4 路不同空洞率（d=1, 2, 4, 8）的深度可分离卷积并行提取多尺度特征，再通过通道重组（Channel Shuffle）实现跨尺度信息交互，最后以残差连接融合输出。整个网络使用深度可分离卷积构建，无需预训练骨干网络，实现了检测精度与推理速度的平衡。
-
-### 主要特性
-
-- **实时性能**：全深度可分离卷积 + MI Module 构建的轻量网络，在 368×368 输入下可达 ~300 FPS
-- **多尺度交互模块（MI Module）**：通过并行空洞卷积（d=1,2,4,8）+ 通道重组实现跨尺度信息融合
-- **深度监督**：5 个不同分辨率的侧输出参与训练损失计算，加速收敛并提升精度
-- **完全自底向上**：无需 ImageNet 预训练权重，从头开始训练即可达到优异性能
+| 文件/目录 | 说明 |
+|---|---|
+| train.py | 训练入口，包含多损失函数（BCE + SSIM）和训练循环 |
+| test.py | 测试入口，加载模型权重并生成显著性预测图 |
+| FPS.py | 计算模型推理速度（FPS） |
+| data_loader.py | 数据加载与预处理（Rescale、RandomCrop、RandomHorizontalFlip、ToTensor） |
+| model/MINet.py | 核心模型定义（MINet 网络结构） |
+| model/basic.py | 基础模块（DSConv3x3、MI_Module、ConvOut 等） |
+| pytorch_ssim/ | SSIM 损失函数实现（用于混合损失训练） |
+| Dataset/ | 数据集目录（SD-saliency-900） |
+| model_save/ | 训练好的模型权重保存位置 |
+| results/ | 测试结果（原图+预测图对比） |
+| figures/ | 论文中的架构图与效果对比图 |
 
 ---
 
-## 网络架构
+## 二、环境搭建
 
-### MI Module（多尺度交互模块）
+### 2.1 硬件要求
 
-MI Module 是 MINet 的核心创新模块，流程如下：
+| 项目 | 要求 |
+|---|---|
+| GPU | NVIDIA GPU（建议 4GB+ 显存） |
+| CUDA | CUDA 10.0+ |
+| 系统 | Windows / Linux / macOS |
 
-1. **多尺度特征提取**：使用 4 路不同空洞率（d=1, 2, 4, 8）的逐通道卷积（Depthwise Conv）并行提取特征
-2. **跨尺度通道重组（Shuffle）**：将 4 种尺度的特征按通道维度切分并重组，使每个输出通道同时包含 4 种尺度的信息
-3. **逐通道融合**：每个通道使用独立的 1×1 卷积融合 4 种尺度信息
-4. **残差连接**：融合结果与原始输入相加后通过 ReLU 输出
+### 2.2 创建 Conda 环境
 
-![MI Module](figures/MI.png)
-
-### 整体网络结构
-
-MINet 采用 U-Net 风格的编码器-解码器结构，共 5 个阶段：
-
-| 阶段 | 编码器 | 输出尺寸 | MI Module 数量 | 解码器 |
-|:----:|:------:|:--------:|:--------------:|:------:|
-| 1 | Conv 3×3, stride 2 | 16×184×184 | 0 | DSConv → DSConv |
-| 2 | DSConv stride 2 + 3×MI | 32×92×92 | 3 | DSConv → DSConv |
-| 3 | DSConv stride 2 + 4×MI | 64×46×46 | 4 | DSConv → DSConv |
-| 4 | DSConv stride 2 + 6×MI | 96×23×23 | 6 | DSConv → DSConv |
-| 5 | DSConv stride 2 + 3×MI | 128×12×12 | 3 | DSConv → DSConv |
-
-解码器通过双线性插值逐步上采样，并通过元素相加与编码器对应层的跳跃连接融合。5 个解码阶段各输出一张显著性图，训练时全部参与损失计算（深度监督），测试时取最精细的输出（out1）作为最终结果。
-
----
-
-## 实验结果
-
-### 定量对比
-
-![定量对比](figures/quan.png)
-
-### 定性对比
-
-![定性对比](figures/qual.png)
-
-### 推理速度
-
-| 方法 | 输入尺寸 | FPS |
-|:----:|:--------:|:---:|
-| MINet | 368×368 | ~300 |
-
-运行速度测试：
 ```bash
-python FPS.py
-```
-
----
-
-## 环境配置
-
-### 环境要求
-
-- Python 3.7 或更高版本
-- PyTorch 1.4.0 或更高版本
-- CUDA（推荐，训练需要）
-
-### 安装步骤
-
-**1. 克隆仓库**
-```bash
-git clone https://github.com/Kunye-Shen/MINet.git
-cd MINet
-```
-
-**2. 创建虚拟环境（推荐）**
-```bash
-conda create -n minet python=3.9 -y
+conda create -n minet python=3.7 -y
 conda activate minet
 ```
 
-**3. 安装依赖**
+### 2.3 安装 PyTorch
+
+使用 conda 安装 CUDA 版 PyTorch（确保 CUDA 可用）：
+
 ```bash
-pip install -r requirements.txt
+conda install pytorch==1.4.0 torchvision==0.5.0 cudatoolkit=10.1 -c pytorch -y
 ```
 
-如需为特定 CUDA 版本安装 PyTorch，请先参考 [PyTorch 官方安装指南](https://pytorch.org/get-started/locally/) 安装 PyTorch 和 torchvision，再安装其余依赖。
+如果使用更新的 PyTorch 版本，也可以兼容：
 
-**4. 验证安装**
 ```bash
-python -c "from model import MINet; import torch; print('OK')"
+# PyTorch 1.10+ 示例
+conda install pytorch torchvision cudatoolkit=11.3 -c pytorch -y
+```
+
+### 2.4 安装其他依赖
+
+```bash
+pip install numpy==1.18.1 scikit-image tqdm
 ```
 
 ---
 
-## 快速开始
+## 三、数据集准备
 
-### 下载资源
+### 3.1 数据集结构
 
-我们提供了训练好的模型权重和预测结果：
+本项目使用 **SD-Saliency-900** 数据集，包含带钢表面缺陷图像及其对应的显著性标签图（GT）。
 
-| 资源 | 链接 |
-|:----:|:----:|
-| 预测结果图 | [Google Drive](https://drive.google.com/drive/folders/1cj_Gd8EDIPvP4SpCdNWhS4G-fRMxm7VC?usp=drive_link) |
-| 预测结果图 | [百度网盘](https://pan.baidu.com/s/1eBZX_1Nf_sWYVz2opp4f0A) (提取码: **rokb**) |
-
-将下载的权重文件放入 `model_save/` 目录。
-
-### 数据集准备
-
-数据集按以下结构组织：
+数据集目录结构如下：
 
 ```
-Dataset/
-└── SD-saliency-900/
-    ├── Img_train/    # 输入图像（.bmp 格式）
-    └── GT_train/     # 标注图像（.png 格式，白色=缺陷，黑色=背景）
+Dataset/SD-saliency-900/
+├── Img_train/      # 训练图像（.bmp 格式）
+└── GT_train/       # 训练标签（.png 格式）
 ```
 
-图像文件与标注文件需一一对应，例如 `Img_train/In_1.bmp` 对应 `GT_train/In_1.png`。
+### 3.2 数据集说明
 
-所有数据路径和超参数均在 `config.py` 中集中配置，可根据需要修改。
+数据集包含三种类型的钢板表面缺陷：
+- **Inclusion（夹杂）**
+- **Patches（斑块）**
+- **Scratches（划痕）**
 
-### 运行推理
+### 3.3 数据集准备
+
+将数据集放置在 `Dataset/SD-saliency-900/` 目录下，确保图像为 `.bmp` 格式，标签为 `.png` 格式。数据加载器会自动匹配对应的图像和标签文件名。
+
+---
+
+## 四、训练与测试
+
+### 4.1 激活环境
 
 ```bash
-python test.py
+conda activate minet
+cd MINet
 ```
 
-脚本加载 `model_save/MINet_best.pth`，对数据集进行推理，在 `results/` 目录下生成左右对比图（左为原图，右为预测结果）。
+### 4.2 开始训练
 
-### 从头训练
+默认训练 80 个 epoch，batch size 为 32：
 
 ```bash
 python train.py
 ```
 
-训练参数及默认值：
+训练过程中会自动保存：
+- **最佳模型**：`model_save/MINet_best.pth`（基于验证损失）
+- **每个 epoch 的模型**：`model_save/epoch_{epoch}.pth`
+- **每 1000 次迭代的模型**：`model_save/epoch_{epoch}_iter_{ite}.pth`
 
-| 参数 | 默认值 | 说明 |
-|:----:|:------:|:----:|
-| 训练轮数 | 80 | 完整训练轮次 |
-| 批次大小 | 32 | 每批次样本数 |
-| 初始学习率 | 0.004 | Adam 优化器 |
-| 学习率衰减 | 每 30 轮 ×0.5 | StepLR 调度器 |
-| 损失函数 | BCE + SSIM | 混合损失，5 个侧输出求和 |
+训练完成后保存最终模型：`model_save/MINet.pth`
 
-训练中的模型保存在 `model_save/` 目录：
+### 4.3 训练输出解读
 
-- `MINet_best.pth` — 训练过程中损失最低的模型
-- `MINet.pth` — 最终模型（80 轮后）
-- `epoch_*.pth` — 每轮存档
-- `epoch_*_iter_*.pth` — 每 1000 次迭代的检查点
+训练过程中每步输出格式如下：
 
-### 修改配置
+```
+[epoch:  1/80, batch:   32/900, ite: 1] loss: 0.853216
+[epoch:  1/80, batch:   64/900, ite: 2] loss: 0.792145
+...
+  >>> Best model saved! Loss: 0.124356
+```
 
-所有实验配置均在 `config.py` 中集中管理，包括：
+| 指标 | 说明 |
+|---|---|
+| epoch | 当前训练轮次 / 总轮次 |
+| batch | 已处理的样本数 / 总样本数 |
+| ite | 总迭代次数 |
+| loss | 混合损失（BCE + SSIM），期望值 0.1~1.5 |
 
-- **数据集路径**：`dataset` 字典中修改 `image_dir` 和 `label_dir`
-- **训练超参数**：`train` 字典中修改学习率、批次大小等
-- **数据增强**：`transform` 字典中修改缩放尺寸、裁剪尺寸等
-- **模型保存路径**：`model` 字典中修改 `model_save_dir` 和 `checkpoint`
+### 4.4 运行测试
 
-### 测速
+训练完成后，使用测试脚本生成显著性预测图：
+
+```bash
+python test.py
+```
+
+测试脚本将：
+1. 加载 `model_save/MINet_best.pth` 最佳模型权重
+2. 对 `Dataset/SD-saliency-900/Img_train/` 中的图像进行预测
+3. 在 `results/` 目录下生成原图与预测图的左右对比图（`*_compare.png`）
+
+### 4.5 计算推理速度
 
 ```bash
 python FPS.py
 ```
 
-以 300 张 368×368 随机图像为一组，运行 100 轮（跳过前 20 轮预热），计算平均 FPS。
+---
+
+## 五、模型结构
+
+### 5.1 MI Module（多尺度交互模块）
+
+![MI Module](figures/MI.png)
+
+MI Module 是 MINet 的核心组件，其工作原理：
+
+1. **多尺度特征提取**：使用 4 个不同膨胀率的深度卷积（DWConv）并行提取多尺度特征
+2. **特征交互融合**：通过 Channel Shuffle 操作实现跨尺度特征交互
+3. **逐点卷积**：每个通道独立使用 PWConv 进行特征选择
+4. **残差连接**：融合后的特征与输入相加，保留原始信息
+
+### 5.2 整体架构
+
+MINet 采用 Encoder-Decoder 结构：
+
+- **Encoder**：5 个 stage，基于 MI Module 构建的轻量级实时骨干网络
+- **Decoder**：5 个 stage，使用不同膨胀率的 DSConv，逐步恢复空间分辨率
+- **侧边输出**：每层 decoder 均有显著性预测输出，共同参与训练
+
+### 5.3 损失函数
+
+采用混合损失函数（Hybrid Loss）：
+- **BCE Loss**：二值交叉熵损失，衡量像素级分类精度
+- **SSIM Loss**：结构相似性损失，保持预测图的局部结构一致性
+- 多侧输出共同计算损失，监督各层特征学习
 
 ---
 
-## 项目结构
+## 六、定量与定性结果
 
-```
-MINet/
-├── LICENSE                   # MIT 许可证
-├── CITATION.cff              # 引用元数据
-├── README.md                 # 本文件（中文）
-├── README-EN.md              # 英文版 README
-├── requirements.txt          # Python 依赖
-├── setup.py                  # 包安装配置
-├── config.py                 # 实验配置（路径、超参数、模型参数）
-├── train.py                  # 训练脚本
-├── test.py                   # 推理/可视化脚本
-├── FPS.py                    # 速度测试脚本
-├── data_loader.py            # 数据集类和预处理变换
-├── model/
-│   ├── __init__.py           # 包入口，导出 MINet
-│   ├── basic.py              # 基础模块（Conv、DSConv、MI_Module、ConvOut）
-│   └── MINet.py              # 完整网络定义
-├── pytorch_ssim/
-│   └── __init__.py           # SSIM 损失函数实现
-├── figures/                  # 论文插图
-├── model_save/               # 模型权重保存目录（训练生成）
-├── results/                  # 预测结果输出目录（测试生成）
-└── Dataset/                  # 数据集（用户自行准备）
-    └── SD-saliency-900/
-        ├── Img_train/        # 输入图像
-        └── GT_train/         # 标注图像
-```
+### 6.1 定量对比
+
+![Quantitative Comparison](figures/quan.png)
+
+### 6.2 定性对比
+
+![Qualitative Comparison](figures/qual.png)
 
 ---
 
-## 常见问题
+## 七、常见问题与解决方案
 
 **Q1: ModuleNotFoundError: No module named 'xxx'**
 
@@ -254,16 +220,18 @@ MINet/
 
 **Q2: FileNotFoundError 找不到数据集**
 
-检查 `config.py` 中 `dataset` 配置的路径是否正确，确认目录结构完整，确保图片与标注文件名一一对应。
+检查 `Dataset/SD-saliency-900/` 目录结构是否正确，确保图像与标签文件名一一对应。
 
 **Q3: CUDA out of memory**
 
-显存不足。减小 `config.py` 中 `train.batch_size`（如 32 → 8 或 16）。
+显存不足。减小 `train.py` 中 `batch_size_train`（如 32 → 8 或 16）。
 
-**Q4: Python 版本兼容性**
+**Q4: 如何确认正在使用 GPU？**
 
-- Python 3.12 与 `sacred` 等包存在兼容性问题，推荐使用 Python 3.9–3.11
-- 如遇 `setuptools` 相关错误，尝试 `pip install 'setuptools<81'`
+```bash
+python -c "import torch; print(torch.cuda.is_available())"
+```
+输出 `True` 表示使用 GPU，`False` 表示使用 CPU。
 
 **Q5: 加载模型时 state_dict 不匹配**
 
@@ -272,18 +240,11 @@ MINet/
 net.load_state_dict(torch.load('model.pth'), strict=False)
 ```
 
-**Q6: 如何确认正在使用 GPU？**
-
-```bash
-python -c "import torch; print(torch.cuda.is_available())"
-```
-输出 `True` 表示使用 GPU，`False` 表示使用 CPU。
-
 ---
 
-## 引用
+## 八、引用
 
-如果您在研究中使用了 MINet，请引用我们的论文：
+如果您在研究中使用了 MINet，请引用原始论文：
 
 ```bibtex
 @article{shen2024minet,
@@ -296,10 +257,9 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 ---
 
-## 许可证
+## 九、参考
 
-本项目采用 [MIT 许可证](LICENSE)。
-
----
+- 原始论文：[MINet: Multiscale Interactive Network ...](https://arxiv.org/abs/2405.16096) (IEEE TII 2024)
+- 原作者：[Kunye Shen](https://scholar.google.com.hk/citations?user=q6_PkywAAAAJ&hl=zh-CN)、[Xiaofei Zhou](https://scholar.google.com.hk/citations?user=2PUAFW8AAAAJ&hl=zh-CN)、[Zhi Liu](https://scholar.google.com.hk/citations?user=Sd5VB2cAAAAJ&hl=zh-CN)
 
 如有问题，请在 GitHub 上提出 Issue。
