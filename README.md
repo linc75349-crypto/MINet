@@ -302,10 +302,4 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 ---
 
-## 联系
-
-- [沈昆烨 (Kunye Shen)](https://scholar.google.com.hk/citations?user=q6_PkywAAAAJ&hl=zh-CN)
-- [周晓飞 (Xiaofei Zhou)](https://scholar.google.com.hk/citations?user=2PUAFW8AAAAJ&hl=zh-CN)
-- [刘志 (Zhi Liu)](https://scholar.google.com.hk/citations?user=Sd5VB2cAAAAJ&hl=zh-CN)
-
 如有问题，请在 GitHub 上提出 Issue。
